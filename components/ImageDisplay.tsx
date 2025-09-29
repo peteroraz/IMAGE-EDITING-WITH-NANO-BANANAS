@@ -5,16 +5,18 @@ import DownloadIcon from './icons/DownloadIcon';
 import SparklesIcon from './icons/SparklesIcon';
 
 interface ImageDisplayProps {
-  imageUrl: string | null;
+  baseImageUrl: string | null;
+  editedImageUrl: string | null;
+  strength: number; // 0 to 1
   isLoading: boolean;
   error: string | null;
 }
 
-const ImageDisplay: React.FC<ImageDisplayProps> = ({ imageUrl, isLoading, error }) => {
+const ImageDisplay: React.FC<ImageDisplayProps> = ({ baseImageUrl, editedImageUrl, strength, isLoading, error }) => {
   const handleDownload = () => {
-    if (!imageUrl) return;
+    if (!editedImageUrl) return;
     const link = document.createElement('a');
-    link.href = imageUrl;
+    link.href = editedImageUrl;
     link.download = 'edited-image.png';
     document.body.appendChild(link);
     link.click();
@@ -36,7 +38,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({ imageUrl, isLoading, error 
       return (
         <div className="flex flex-col items-center justify-center h-full text-center text-red-400 p-4">
           <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
-            <span className="text-2xl">!</span>
+            <span className="text-2xl font-bold">!</span>
           </div>
           <p className="font-semibold">An Error Occurred</p>
           <p className="text-sm mt-1">{error}</p>
@@ -44,15 +46,23 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({ imageUrl, isLoading, error 
       );
     }
 
-    if (imageUrl) {
+    if (editedImageUrl) {
       return (
         <div className="flex flex-col h-full">
             <h3 className="text-lg font-semibold text-slate-300 mb-4 text-center">Generated Image</h3>
-            <div className="flex-grow flex items-center justify-center rounded-lg overflow-hidden bg-black/20">
+            <div className="relative flex-grow flex items-center justify-center rounded-lg overflow-hidden bg-black/20">
+              {baseImageUrl && (
+                <img
+                  src={baseImageUrl}
+                  alt="Original for blending"
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+              )}
               <img
-                src={imageUrl}
+                src={editedImageUrl}
                 alt="Edited result"
-                className="max-w-full max-h-full object-contain"
+                className="absolute inset-0 w-full h-full object-contain transition-opacity duration-100"
+                style={{ opacity: strength }}
               />
             </div>
             <button
@@ -60,7 +70,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({ imageUrl, isLoading, error 
                 className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-500 transition-all duration-200"
             >
                 <DownloadIcon />
-                Download
+                Download Edited Image
             </button>
         </div>
       );
@@ -72,7 +82,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({ imageUrl, isLoading, error 
             <SparklesIcon />
         </div>
         <p className="mt-4 text-lg font-semibold">Your edited image will appear here</p>
-        <p className="text-sm">Upload an image and write a prompt to get started.</p>
+        <p className="text-sm">Upload or generate an image and write a prompt to get started.</p>
       </div>
     );
   };

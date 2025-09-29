@@ -10,24 +10,57 @@ if (!API_KEY) {
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 /**
- * Edits an image using the Gemini API based on a text prompt.
- * @param base64ImageData The base64 encoded image data (without the data URL prefix).
- * @param mimeType The MIME type of the image (e.g., 'image/jpeg').
+ * Generates a new image from a text prompt using the Imagen model.
+ * @param prompt The text prompt describing the image to generate.
+ * @returns A promise that resolves to the base64 encoded string of the generated image.
+ */
+export async function generateImage(prompt: string): Promise<string> {
+  try {
+    const response = await ai.models.generateImages({
+      model: 'imagen-4.0-generate-001',
+      prompt: prompt,
+      config: {
+        numberOfImages: 1,
+        outputMimeType: 'image/png',
+        aspectRatio: '1:1',
+      },
+    });
+
+    if (response.generatedImages && response.generatedImages.length > 0) {
+      return response.generatedImages[0].image.imageBytes;
+    }
+
+    throw new Error("AI did not return an image for generation.");
+  } catch (error) {
+    console.error("Error calling Gemini API for image generation:", error);
+    throw new Error("Failed to generate image from AI. Please check the console for details.");
+  }
+}
+
+/**
+ * Edits one or more images using the Gemini API based on a text prompt.
+ * @param images An array of image objects, each with base64 data and MIME type.
  * @param prompt The text prompt describing the desired edit.
  * @returns A promise that resolves to the base64 encoded string of the edited image.
  */
-export async function editImage(base64ImageData: string, mimeType: string, prompt: string): Promise<string> {
+export async function editImage(images: { base64ImageData: string; mimeType: string }[], prompt: string): Promise<string> {
+  if (images.length === 0) {
+    throw new Error("At least one image must be provided for editing.");
+  }
+
   try {
+    const imageParts = images.map(image => ({
+      inlineData: {
+        data: image.base64ImageData,
+        mimeType: image.mimeType,
+      },
+    }));
+
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image-preview',
       contents: {
         parts: [
-          {
-            inlineData: {
-              data: base64ImageData,
-              mimeType: mimeType,
-            },
-          },
+          ...imageParts,
           {
             text: prompt,
           },
