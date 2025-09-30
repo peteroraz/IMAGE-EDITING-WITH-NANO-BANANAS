@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Modality } from "@google/genai";
 
 const API_KEY = process.env.API_KEY;
@@ -12,9 +11,10 @@ const ai = new GoogleGenAI({ apiKey: API_KEY });
 /**
  * Generates a new image from a text prompt using the Imagen model.
  * @param prompt The text prompt describing the image to generate.
+ * @param aspectRatio The desired aspect ratio for the generated image.
  * @returns A promise that resolves to the base64 encoded string of the generated image.
  */
-export async function generateImage(prompt: string): Promise<string> {
+export async function generateImage(prompt: string, aspectRatio: string): Promise<string> {
   try {
     const response = await ai.models.generateImages({
       model: 'imagen-4.0-generate-001',
@@ -22,7 +22,7 @@ export async function generateImage(prompt: string): Promise<string> {
       config: {
         numberOfImages: 1,
         outputMimeType: 'image/png',
-        aspectRatio: '1:1',
+        aspectRatio: aspectRatio,
       },
     });
 

@@ -1,3 +1,4 @@
+import { PixelCrop } from 'react-image-crop';
 
 /**
  * Converts a File object to a base64 encoded data URL.
@@ -34,4 +35,42 @@ export function stripDataUrlPrefix(dataUrl: string): string {
     throw new Error("Invalid data URL format");
   }
   return dataUrl.substring(commaIndex + 1);
+}
+
+/**
+ * Crops an image element using a canvas.
+ * @param image The HTMLImageElement to crop.
+ * @param crop The pixel crop dimensions from react-image-crop.
+ * @returns A promise that resolves with the base64 data URL of the cropped image.
+ */
+export function cropImage(image: HTMLImageElement, crop: PixelCrop): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const canvas = document.createElement('canvas');
+        const scaleX = image.naturalWidth / image.width;
+        const scaleY = image.naturalHeight / image.height;
+    
+        canvas.width = crop.width;
+        canvas.height = crop.height;
+    
+        const ctx = canvas.getContext('2d');
+    
+        if (!ctx) {
+            return reject(new Error('Failed to get canvas context'));
+        }
+    
+        ctx.drawImage(
+            image,
+            crop.x * scaleX,
+            crop.y * scaleY,
+            crop.width * scaleX,
+            crop.height * scaleY,
+            0,
+            0,
+            crop.width,
+            crop.height
+        );
+        
+        const mimeType = image.src.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
+        resolve(canvas.toDataURL(mimeType));
+    });
 }

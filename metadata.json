@@ -1,5 +1,8 @@
 {
   "name": "AI Photo Editor",
   "description": "An intuitive web application that uses Gemini's 'gemini-2.5-flash-image-preview' (nano-banana) model to edit photos based on text prompts. Upload an image, describe your desired changes, and let the AI bring your vision to life.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
 }

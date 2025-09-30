@@ -1,8 +1,10 @@
-
-import React from 'react';
+import React, { useCallback } from 'react';
 import Spinner from './icons/Spinner';
 import DownloadIcon from './icons/DownloadIcon';
 import SparklesIcon from './icons/SparklesIcon';
+import ShareIcon from './icons/ShareIcon';
+
+export type ExportFormat = 'image/png' | 'image/jpeg' | 'image/webp';
 
 interface ImageDisplayProps {
   baseImageUrl: string | null;
@@ -10,18 +12,101 @@ interface ImageDisplayProps {
   strength: number; // 0 to 1
   isLoading: boolean;
   error: string | null;
+  exportFormat: ExportFormat;
+  setExportFormat: (format: ExportFormat) => void;
+  exportQuality: number;
+  setExportQuality: (quality: number) => void;
 }
 
-const ImageDisplay: React.FC<ImageDisplayProps> = ({ baseImageUrl, editedImageUrl, strength, isLoading, error }) => {
-  const handleDownload = () => {
-    if (!editedImageUrl) return;
-    const link = document.createElement('a');
-    link.href = editedImageUrl;
-    link.download = 'edited-image.png';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+const ImageDisplay: React.FC<ImageDisplayProps> = ({ 
+  baseImageUrl, 
+  editedImageUrl, 
+  strength, 
+  isLoading, 
+  error,
+  exportFormat,
+  setExportFormat,
+  exportQuality,
+  setExportQuality
+ }) => {
+  const isShareSupported = typeof navigator !== 'undefined' && !!navigator.share;
+
+  const getFinalImageBlob = useCallback((): Promise<Blob | null> => {
+    return new Promise((resolve) => {
+      if (!editedImageUrl) {
+        resolve(null);
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(null);
+        return;
+      }
+
+      const editedImg = new Image();
+      editedImg.crossOrigin = 'anonymous';
+      editedImg.onload = () => {
+        canvas.width = editedImg.naturalWidth;
+        canvas.height = editedImg.naturalHeight;
+        
+        if (baseImageUrl && strength < 1) {
+            const baseImg = new Image();
+            baseImg.crossOrigin = 'anonymous';
+            baseImg.onload = () => {
+                ctx.drawImage(baseImg, 0, 0); // Draw base image first
+                ctx.globalAlpha = strength;    // Set opacity for blend
+                ctx.drawImage(editedImg, 0, 0); // Draw edited image on top
+                ctx.globalAlpha = 1.0;         // Reset opacity
+                canvas.toBlob(blob => resolve(blob), exportFormat, exportQuality);
+            };
+            baseImg.onerror = () => resolve(null);
+            baseImg.src = baseImageUrl;
+        } else {
+            ctx.drawImage(editedImg, 0, 0); // Just draw the final edited image
+            canvas.toBlob(blob => resolve(blob), exportFormat, exportQuality);
+        }
+      };
+      editedImg.onerror = () => resolve(null);
+      editedImg.src = editedImageUrl;
+    });
+  }, [baseImageUrl, editedImageUrl, strength, exportFormat, exportQuality]);
+
+  const handleDownload = async () => {
+    const blob = await getFinalImageBlob();
+    if (blob) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const extension = exportFormat.split('/')[1];
+      link.download = `edited-image.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
   };
+
+  const handleShare = async () => {
+    if (!isShareSupported) return;
+
+    const blob = await getFinalImageBlob();
+    if (blob) {
+        const extension = exportFormat.split('/')[1];
+        const file = new File([blob], `edited-image.${extension}`, { type: exportFormat });
+        try {
+            await navigator.share({
+                files: [file],
+                title: 'AI Edited Image',
+                text: 'Check out this image I created!',
+            });
+        } catch (err) {
+            console.error('Sharing failed:', err);
+        }
+    }
+  };
+
 
   const renderContent = () => {
     if (isLoading) {
@@ -48,7 +133,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({ baseImageUrl, editedImageUr
 
     if (editedImageUrl) {
       return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full w-full">
             <h3 className="text-lg font-semibold text-slate-300 mb-4 text-center">Generated Image</h3>
             <div className="relative flex-grow flex items-center justify-center rounded-lg overflow-hidden bg-black/20">
               {baseImageUrl && (
@@ -65,13 +150,59 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({ baseImageUrl, editedImageUr
                 style={{ opacity: strength }}
               />
             </div>
-            <button
-                onClick={handleDownload}
-                className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-500 transition-all duration-200"
-            >
-                <DownloadIcon />
-                Download Edited Image
-            </button>
+
+            {/* Export Controls */}
+            <div className="mt-4 p-4 bg-slate-900/50 rounded-lg space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="format" className="block text-sm font-medium text-slate-300 mb-2">Format</label>
+                        <select 
+                            id="format"
+                            value={exportFormat}
+                            onChange={e => setExportFormat(e.target.value as ExportFormat)}
+                            className="w-full p-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:ring-2 focus:ring-indigo-500"
+                        >
+                            <option value="image/png">PNG</option>
+                            <option value="image/jpeg">JPG</option>
+                            <option value="image/webp">WEBP</option>
+                        </select>
+                    </div>
+                    { (exportFormat === 'image/jpeg' || exportFormat === 'image/webp') &&
+                        <div className="flex-grow">
+                            <label htmlFor="quality" className="block text-sm font-medium text-slate-300 mb-2">Quality: {Math.round(exportQuality * 100)}</label>
+                            <input
+                                type="range"
+                                id="quality"
+                                min="0.1"
+                                max="1"
+                                step="0.01"
+                                value={exportQuality}
+                                onChange={(e) => setExportQuality(parseFloat(e.target.value))}
+                                className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                            />
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <button
+                  onClick={handleDownload}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-500 transition-all duration-200"
+              >
+                  <DownloadIcon />
+                  Download
+              </button>
+              {isShareSupported && (
+                 <button
+                    onClick={handleShare}
+                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-sky-600 text-white font-semibold rounded-lg shadow-md hover:bg-sky-500 transition-all duration-200"
+                >
+                    <ShareIcon />
+                    Share
+                </button>
+              )}
+            </div>
         </div>
       );
     }
