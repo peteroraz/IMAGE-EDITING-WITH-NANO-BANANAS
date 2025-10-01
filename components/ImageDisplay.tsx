@@ -3,6 +3,9 @@ import Spinner from './icons/Spinner';
 import DownloadIcon from './icons/DownloadIcon';
 import SparklesIcon from './icons/SparklesIcon';
 import ShareIcon from './icons/ShareIcon';
+import VideoPlayer from './VideoPlayer';
+import VideoEditor from './VideoEditor';
+import PencilIcon from './icons/PencilIcon';
 
 export type ExportFormat = 'image/png' | 'image/jpeg' | 'image/webp';
 
@@ -11,11 +14,18 @@ interface ImageDisplayProps {
   editedImageUrl: string | null;
   strength: number; // 0 to 1
   isLoading: boolean;
+  loadingStatus?: string;
   error: string | null;
   exportFormat: ExportFormat;
   setExportFormat: (format: ExportFormat) => void;
   exportQuality: number;
   setExportQuality: (quality: number) => void;
+  videoUrl: string | null;
+  videoPrompt: string;
+  isSelectingFrame: boolean;
+  onFrameSelected: (dataUrl: string) => void;
+  onCancelFrameSelection: () => void;
+  onUseAsSource: (dataUrl: string) => void;
 }
 
 const ImageDisplay: React.FC<ImageDisplayProps> = ({ 
@@ -23,11 +33,18 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   editedImageUrl, 
   strength, 
   isLoading, 
+  loadingStatus,
   error,
   exportFormat,
   setExportFormat,
   exportQuality,
-  setExportQuality
+  setExportQuality,
+  videoUrl,
+  videoPrompt,
+  isSelectingFrame,
+  onFrameSelected,
+  onCancelFrameSelection,
+  onUseAsSource,
  }) => {
   const isShareSupported = typeof navigator !== 'undefined' && !!navigator.share;
 
@@ -55,16 +72,16 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             const baseImg = new Image();
             baseImg.crossOrigin = 'anonymous';
             baseImg.onload = () => {
-                ctx.drawImage(baseImg, 0, 0); // Draw base image first
-                ctx.globalAlpha = strength;    // Set opacity for blend
-                ctx.drawImage(editedImg, 0, 0); // Draw edited image on top
-                ctx.globalAlpha = 1.0;         // Reset opacity
+                ctx.drawImage(baseImg, 0, 0);
+                ctx.globalAlpha = strength;
+                ctx.drawImage(editedImg, 0, 0);
+                ctx.globalAlpha = 1.0;
                 canvas.toBlob(blob => resolve(blob), exportFormat, exportQuality);
             };
             baseImg.onerror = () => resolve(null);
             baseImg.src = baseImageUrl;
         } else {
-            ctx.drawImage(editedImg, 0, 0); // Just draw the final edited image
+            ctx.drawImage(editedImg, 0, 0);
             canvas.toBlob(blob => resolve(blob), exportFormat, exportQuality);
         }
       };
@@ -109,11 +126,15 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
 
   const renderContent = () => {
+    if (isSelectingFrame && videoUrl) {
+        return <VideoEditor videoUrl={videoUrl} onFrameSelected={onFrameSelected} onCancel={onCancelFrameSelection} />;
+    }
+
     if (isLoading) {
       return (
         <div className="flex flex-col items-center justify-center h-full text-slate-400">
           <Spinner />
-          <p className="mt-4 text-lg font-semibold">AI is working its magic...</p>
+          <p className="mt-4 text-lg font-semibold">{loadingStatus || 'AI is working its magic...'}</p>
           <p className="text-sm">This can take a moment.</p>
         </div>
       );
@@ -129,6 +150,10 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           <p className="text-sm mt-1">{error}</p>
         </div>
       );
+    }
+    
+    if (videoUrl) {
+        return <VideoPlayer videoUrl={videoUrl} prompt={videoPrompt} />;
     }
 
     if (editedImageUrl) {
@@ -150,8 +175,17 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 style={{ opacity: strength }}
               />
             </div>
+            
+            <div className="mt-4">
+              <button
+                onClick={() => onUseAsSource(editedImageUrl)}
+                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-500 transition-all duration-200"
+              >
+                <PencilIcon />
+                Edit This Image
+              </button>
+            </div>
 
-            {/* Export Controls */}
             <div className="mt-4 p-4 bg-slate-900/50 rounded-lg space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -212,8 +246,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         <div className="w-16 h-16 text-slate-600">
             <SparklesIcon />
         </div>
-        <p className="mt-4 text-lg font-semibold">Your edited image will appear here</p>
-        <p className="text-sm">Upload or generate an image and write a prompt to get started.</p>
+        <p className="mt-4 text-lg font-semibold">Your generated media will appear here</p>
+        <p className="text-sm">Use the tools on the left to get started.</p>
       </div>
     );
   };

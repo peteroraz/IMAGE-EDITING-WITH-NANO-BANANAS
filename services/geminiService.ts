@@ -84,3 +84,54 @@ export async function editImage(images: { base64ImageData: string; mimeType: str
     throw new Error("Failed to generate image from AI. Please check the console for details.");
   }
 }
+
+/**
+ * Generates a video from a text prompt and an optional source image.
+ * @param prompt The text prompt describing the video.
+ * @param image An optional image object with base64 data and MIME type.
+ * @param onStatusUpdate A callback function to report progress.
+ * @returns A promise that resolves to an object URL for the generated video.
+ */
+export async function generateVideo(
+  prompt: string,
+  image: { base64ImageData: string; mimeType: string } | undefined,
+  onStatusUpdate: (status: string) => void
+): Promise<string> {
+  try {
+    onStatusUpdate('Sending request to AI...');
+    let operation = await ai.models.generateVideos({
+      model: 'veo-2.0-generate-001',
+      prompt: prompt,
+      image: image ? { imageBytes: image.base64ImageData, mimeType: image.mimeType } : undefined,
+      config: {
+        numberOfVideos: 1
+      }
+    });
+
+    onStatusUpdate('Request received. Polling for video generation status...');
+    while (!operation.done) {
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      onStatusUpdate('Checking status... This can take a few minutes.');
+      operation = await ai.operations.getVideosOperation({ operation: operation });
+    }
+
+    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+
+    if (!downloadLink) {
+      throw new Error("Video generation completed, but no download link was found.");
+    }
+
+    onStatusUpdate('Generation complete! Downloading video...');
+    const response = await fetch(`${downloadLink}&key=${API_KEY}`);
+    if (!response.ok) {
+      throw new Error(`Failed to download video: ${response.statusText}`);
+    }
+    const videoBlob = await response.blob();
+    onStatusUpdate('');
+    return URL.createObjectURL(videoBlob);
+  } catch (error) {
+    console.error("Error calling Gemini API for video generation:", error);
+    onStatusUpdate('');
+    throw new Error("Failed to generate video from AI. Please check the console for details.");
+  }
+}

@@ -1,6 +1,6 @@
 {
-  "name": "AI Photo Editor",
-  "description": "An intuitive web application that uses Gemini's 'gemini-2.5-flash-image-preview' (nano-banana) model to edit photos based on text prompts. Upload an image, describe your desired changes, and let the AI bring your vision to life.",
+  "name": "AI Media Studio",
+  "description": "An intuitive web application that uses Gemini models to generate and edit photos and videos. Generate videos from text or images using 'veo-2.0-generate-001', and edit photos with 'gemini-2.5-flash-image-preview'.",
   "requestFramePermissions": [
     "camera",
     "microphone"
