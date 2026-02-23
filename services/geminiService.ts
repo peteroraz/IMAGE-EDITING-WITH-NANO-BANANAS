@@ -1,49 +1,105 @@
-import { GoogleGenAI, Modality } from "@google/genai";
 
-const API_KEY = process.env.API_KEY;
+import { GoogleGenAI, Modality, type GroundingChunk } from "@google/genai";
 
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable is not set.");
+export { type GroundingChunk };
+
+// Note: For gemini-3-pro-image-preview and veo-3.1-fast-generate-preview, 
+// we'll instantiate fresh to ensure we use the user-selected key if applicable.
+// FIX: Always use a clean initialization with process.env.API_KEY as the only source.
+const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+
+export interface SearchResult {
+  text: string;
+  citations: GroundingChunk[];
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
 /**
- * Generates a new image from a text prompt using the Imagen model.
- * @param prompt The text prompt describing the image to generate.
- * @param aspectRatio The desired aspect ratio for the generated image.
- * @returns A promise that resolves to the base64 encoded string of the generated image.
+ * Searches the web for information using Gemini 3 Flash.
  */
-export async function generateImage(prompt: string, aspectRatio: string): Promise<string> {
+export async function searchWeb(prompt: string): Promise<SearchResult> {
+  const ai = getAI();
   try {
-    const response = await ai.models.generateImages({
-      model: 'imagen-4.0-generate-001',
-      prompt: prompt,
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
       config: {
-        numberOfImages: 1,
-        outputMimeType: 'image/png',
-        aspectRatio: aspectRatio,
+        tools: [{ googleSearch: {} }],
       },
     });
 
-    if (response.generatedImages && response.generatedImages.length > 0) {
-      return response.generatedImages[0].image.imageBytes;
+    const text = response.text || "No summary available.";
+    const citations = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+
+    return { text, citations };
+  } catch (error) {
+    console.error("Error calling Gemini API for search:", error);
+    throw new Error("Failed to retrieve search results. Please try again.");
+  }
+}
+
+/**
+ * Generates a new image, optionally using Google Search for grounding.
+ */
+export async function generateImage(prompt: string, aspectRatio: string, useSearch: boolean = false): Promise<{ base64: string; citations?: GroundingChunk[] }> {
+  const ai = getAI();
+  try {
+    if (useSearch) {
+      // High-quality generation with search grounding uses Pro model
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: { parts: [{ text: prompt }] },
+        config: {
+          imageConfig: { aspectRatio: aspectRatio as any, imageSize: "1K" },
+          // FIX: Use 'googleSearch' specifically for gemini-3-pro-image-preview.
+          tools: [{ googleSearch: {} }],
+        },
+      });
+
+      let base64 = "";
+      if (response.candidates?.[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData) {
+            base64 = part.inlineData.data;
+            break;
+          }
+        }
+      }
+      
+      const citations = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      
+      if (!base64) throw new Error("AI did not return an image.");
+      return { base64, citations };
+    } else {
+      const response = await ai.models.generateImages({
+        model: 'imagen-4.0-generate-001',
+        prompt: prompt,
+        config: {
+          numberOfImages: 1,
+          outputMimeType: 'image/png',
+          aspectRatio: aspectRatio,
+        },
+      });
+
+      if (response.generatedImages && response.generatedImages.length > 0) {
+        return { base64: response.generatedImages[0].image.imageBytes };
+      }
     }
 
     throw new Error("AI did not return an image for generation.");
   } catch (error) {
     console.error("Error calling Gemini API for image generation:", error);
-    throw new Error("Failed to generate image from AI. Please check the console for details.");
+    if (error instanceof Error && error.message.includes("Requested entity was not found")) {
+        throw new Error("API_KEY_ERROR");
+    }
+    throw new Error("Failed to generate image from AI.");
   }
 }
 
 /**
- * Edits one or more images using the Gemini API based on a text prompt.
- * @param images An array of image objects, each with base64 data and MIME type.
- * @param prompt The text prompt describing the desired edit.
- * @returns A promise that resolves to the base64 encoded string of the edited image.
+ * Edits images using Gemini 2.5 Flash Image.
  */
 export async function editImage(images: { base64ImageData: string; mimeType: string }[], prompt: string): Promise<string> {
+  const ai = getAI();
   if (images.length === 0) {
     throw new Error("At least one image must be provided for editing.");
   }
@@ -57,81 +113,78 @@ export async function editImage(images: { base64ImageData: string; mimeType: str
     }));
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image-preview',
+      model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [
-          ...imageParts,
-          {
-            text: prompt,
-          },
-        ],
+        parts: [ ...imageParts, { text: prompt } ],
       },
-      config: {
-        responseModalities: [Modality.IMAGE, Modality.TEXT],
-      },
+      // FIX: Removed unnecessary responseModalities config to adhere to simpler prompt-based generation content for images.
     });
 
-    // The model can return multiple parts (text, image). We need to find the image part.
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData && part.inlineData.data) {
-        return part.inlineData.data;
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData && part.inlineData.data) {
+          return part.inlineData.data;
+        }
       }
     }
 
-    throw new Error("AI did not return an image. It might have refused the request. Please try a different prompt.");
+    throw new Error("AI did not return an image.");
   } catch (error) {
     console.error("Error calling Gemini API:", error);
-    throw new Error("Failed to generate image from AI. Please check the console for details.");
+    throw new Error("Failed to edit image.");
   }
 }
 
 /**
- * Generates a video from a text prompt and an optional source image.
- * @param prompt The text prompt describing the video.
- * @param image An optional image object with base64 data and MIME type.
- * @param onStatusUpdate A callback function to report progress.
- * @returns A promise that resolves to an object URL for the generated video.
+ * Generates a video using Veo 3.1.
  */
 export async function generateVideo(
   prompt: string,
   image: { base64ImageData: string; mimeType: string } | undefined,
   onStatusUpdate: (status: string) => void
 ): Promise<string> {
+  const ai = getAI();
   try {
-    onStatusUpdate('Sending request to AI...');
+    onStatusUpdate('Preparing video request...');
     let operation = await ai.models.generateVideos({
-      model: 'veo-2.0-generate-001',
+      model: 'veo-3.1-fast-generate-preview',
       prompt: prompt,
       image: image ? { imageBytes: image.base64ImageData, mimeType: image.mimeType } : undefined,
       config: {
-        numberOfVideos: 1
+        numberOfVideos: 1,
+        resolution: '720p',
+        aspectRatio: '16:9'
       }
     });
 
-    onStatusUpdate('Request received. Polling for video generation status...');
+    onStatusUpdate('Generating video... this may take a few minutes.');
     while (!operation.done) {
       await new Promise(resolve => setTimeout(resolve, 10000));
-      onStatusUpdate('Checking status... This can take a few minutes.');
+      onStatusUpdate('Still working on your video...');
       operation = await ai.operations.getVideosOperation({ operation: operation });
     }
 
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
 
-    if (!downloadLink) {
-      throw new Error("Video generation completed, but no download link was found.");
-    }
+    if (!downloadLink) throw new Error("No download link returned.");
 
-    onStatusUpdate('Generation complete! Downloading video...');
-    const response = await fetch(`${downloadLink}&key=${API_KEY}`);
-    if (!response.ok) {
-      throw new Error(`Failed to download video: ${response.statusText}`);
-    }
+    onStatusUpdate('Downloading generated video...');
+    // FIX: Using process.env.GEMINI_API_KEY directly in fetch as required by Veo generation instructions.
+    const response = await fetch(downloadLink, {
+      method: 'GET',
+      headers: {
+        'x-goog-api-key': process.env.GEMINI_API_KEY as string,
+      },
+    });
     const videoBlob = await response.blob();
     onStatusUpdate('');
     return URL.createObjectURL(videoBlob);
   } catch (error) {
-    console.error("Error calling Gemini API for video generation:", error);
+    console.error("Error generating video:", error);
     onStatusUpdate('');
-    throw new Error("Failed to generate video from AI. Please check the console for details.");
+    if (error instanceof Error && error.message.includes("Requested entity was not found")) {
+        throw new Error("API_KEY_ERROR");
+    }
+    throw new Error("Video generation failed.");
   }
 }

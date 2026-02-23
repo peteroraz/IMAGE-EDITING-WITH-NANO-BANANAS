@@ -1,6 +1,6 @@
 {
   "name": "AI Media Studio",
-  "description": "An intuitive web application that uses Gemini models to generate and edit photos and videos. Generate videos from text or images using 'veo-2.0-generate-001', and edit photos with 'gemini-2.5-flash-image-preview'.",
+  "description": "An intuitive web application that uses Gemini models to search, retrieve, generate and edit photos and videos. Features Google Search grounding for real-time information and Veo 3.1 for high-quality video generation.",
   "requestFramePermissions": [
     "camera",
     "microphone"
